@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/slack-go/slack"
 )
 
 type TimeCampUser struct {
@@ -45,9 +46,9 @@ func main() {
 
 	var tcToken string
 	var emailList string
-	var slackhook string
+	var slackToken string
 	flag.StringVar(&tcToken, "tctoken", "", "Timecamp API token")
-	flag.StringVar(&slackhook, "slackhook", "", "Slack message posting webhook")
+	flag.StringVar(&slackToken, "slacktoken", "", "Slack app oauth token string")
 	flag.StringVar(&emailList, "users", "", "comma separated list of user email to check")
 	flag.Parse()
 	emails := strings.Split(emailList,",")
@@ -76,7 +77,7 @@ func main() {
 	today := time.Now()
 	yesterday := today.AddDate(0,0,-1)
 
-	naughtlyList := []string{}
+	api := slack.New(slackToken)
 	for _, u := range(fulltime) {
 		getEntriesResponse, err := http.Get(fmt.Sprintf("https://www.timecamp.com/third_party/api/entries/format/json/api_token/%v/from/%v/to/%v/user_ids/%v", tcToken, yesterday.Format("2006-01-02"), today.Format("2006-01-02"), u.UserID))
 		if err != nil {
@@ -87,33 +88,23 @@ func main() {
 		entries := []TimeCampEntry{}
 		json.Unmarshal(getEntries, &entries)
 		if len(entries) == 0 {
-			naughtlyList = append(naughtlyList, strings.Title(u.Email[:strings.Index(u.Email, "@")]))
+			slackUser, err := api.GetUserByEmail(u.Email)
+			if err != nil {
+				fmt.Sprintf("Failed to get slack user for %v: %v", u.Email, err)
+				continue
+			}
+			dmChannel, _, _, err := api.OpenConversation(&slack.OpenConversationParameters{
+				ReturnIM:  false,
+				Users:    []string{slackUser.ID},
+			})
+			if err != nil {
+				fmt.Sprintf("Could not open Conversation with %v: %v", slackUser.RealName, err)
+				continue
+			}
+			api.PostMessage(dmChannel.ID, slack.MsgOptionText(
+				fmt.Sprintf("Hi %v, please remember to fill in your timesheet for today", strings.Title(slackUser.Name)),
+				false,
+			))
 		}
 	}
-
-	var slackMsg string
-	if len(naughtlyList) == 0 {
-		slackMsg = "Everyone has filled in their timesheets, well done!"
-	} else {
-		naughtyString := strings.Join(naughtlyList, ", ")
-		lastComma := strings.LastIndex(naughtyString, ",")
-		if lastComma > 0 {
-			naughtyString = naughtyString[:lastComma] + strings.Replace(naughtyString[lastComma:], ",", " and", 1)
-			slackMsg = fmt.Sprintf("%v have not filled in their timesheets", naughtyString)
-		} else {
-			slackMsg = fmt.Sprintf("%v has not filled in their timesheet", naughtyString)
-		}
-
-	}
-	fmt.Println(slackMsg)
-
-	slackjson := map[string]string{"text": slackMsg}
-	jsonData, _ := json.Marshal(slackjson)
-	response, err := http.Post(slackhook, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		fmt.Printf("Could not post slack message: %v", err)
-		os.Exit(1)
-	}
-	data, _ := ioutil.ReadAll(response.Body)
-	fmt.Println(string(data))
 }
