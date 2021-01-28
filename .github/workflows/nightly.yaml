@@ -1,7 +1,7 @@
 name: nightly-reminder
 on:
   schedule:
-    - cron: "* 20 * * 1-5"
+    - cron: "* 18 * * 1-5"
 jobs:
   reminder:
     name: reminder
@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
       - run: make
-      - run: ./bin/timecamper -tctoken $TC_TOKEN -slacktoken $SLACK_TOKEN -users $EMAILS
+      - run: ./.bin/timecamper -tctoken $TC_TOKEN -slacktoken $SLACK_TOKEN -users $EMAILS
         env:
           TC_TOKEN: ${{ secrets.TC_TOKEN }}
           SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
