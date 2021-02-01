@@ -70,27 +70,31 @@ func main() {
 			}
 		}
 		if !useridfound {
-			fmt.Sprintf("Cound not find timecamp ID for %v", email)
+			fmt.Printf("Cound not find timecamp ID for %v\n", email)
 		}
 	}
+
+	fmt.Printf("Found %v users to check", len(fulltime))
 
 	today := time.Now()
 	yesterday := today.AddDate(0,0,-1)
 
 	api := slack.New(slackToken)
-	for _, u := range(fulltime) {
+	for i, u := range(fulltime) {
 		getEntriesResponse, err := http.Get(fmt.Sprintf("https://www.timecamp.com/third_party/api/entries/format/json/api_token/%v/from/%v/to/%v/user_ids/%v", tcToken, yesterday.Format("2006-01-02"), today.Format("2006-01-02"), u.UserID))
 		if err != nil {
-			fmt.Sprintf("Failed to retrieve task list for %v: %v", u.Email, err)
+			fmt.Printf("Failed to retrieve task list for %v: %v", u.Email, err)
 			os.Exit(1)
 		}
 		getEntries, _ := ioutil.ReadAll(getEntriesResponse.Body)
 		entries := []TimeCampEntry{}
 		json.Unmarshal(getEntries, &entries)
+		fmt.Printf("Found %v entries for user %v\n", len(entries), i)
 		if len(entries) == 0 {
+			fmt.Print("Sending reminder message... ")
 			slackUser, err := api.GetUserByEmail(u.Email)
 			if err != nil {
-				fmt.Sprintf("Failed to get slack user for %v: %v", u.Email, err)
+				fmt.Printf("Failed to get slack user for %v: %v\n", u.Email, err)
 				continue
 			}
 			dmChannel, _, _, err := api.OpenConversation(&slack.OpenConversationParameters{
@@ -98,13 +102,14 @@ func main() {
 				Users:    []string{slackUser.ID},
 			})
 			if err != nil {
-				fmt.Sprintf("Could not open Conversation with %v: %v", slackUser.RealName, err)
+				fmt.Printf("Could not open Conversation with %v: %v\n", slackUser.RealName, err)
 				continue
 			}
 			api.PostMessage(dmChannel.ID, slack.MsgOptionText(
 				fmt.Sprintf("Hi %v, please remember to fill in your timesheet for today", strings.Title(slackUser.Name)),
 				false,
 			))
+			fmt.Print("Done\n")
 		}
 	}
 }
